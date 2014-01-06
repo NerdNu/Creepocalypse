@@ -1,0 +1,16 @@
+name: Creepocalypse
+version: 0.1
+author: totemo
+description: New Year's Eve Creeper Apocalypse 
+main: nu.nerd.creepocalypse.Creepocalypse
+permissions:
+  creepocalypse.admin:
+    description: Permission to administer the plugin.
+    default: op
+commands:
+  creepocalypse:
+    description: Main plugin command.
+    permission: creepocalypse.admin
+    usage: |
+      /<command> reload: Reload the configuration.
+    
