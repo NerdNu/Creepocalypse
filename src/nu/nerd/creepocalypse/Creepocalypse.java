@@ -103,8 +103,7 @@ public class Creepocalypse extends JavaPlugin implements Listener {
                 creeper = (Creeper) loc.getWorld().spawnEntity(loc, EntityType.CREEPER);
 
                 // Remove original spawn.
-                Monster monster = (Monster) entity;
-                monster.remove();
+                entity.remove();
             }
         }
 
@@ -116,7 +115,9 @@ public class Creepocalypse extends JavaPlugin implements Listener {
 
     // ------------------------------------------------------------------------
     /**
-     * Tag creepers spawned in spawners so we can suppress special drops.
+     * Tag creepers hurt by players.
+     * 
+     * Only those creepers hurt recently by players will have special drops.
      */
     @EventHandler(ignoreCancelled = true)
     public void onCreeperDamage(EntityDamageByEntityEvent event) {
