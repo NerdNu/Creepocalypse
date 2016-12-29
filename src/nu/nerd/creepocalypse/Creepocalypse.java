@@ -40,16 +40,28 @@ import org.bukkit.util.Vector;
 public class Creepocalypse extends JavaPlugin implements Listener {
     // ------------------------------------------------------------------------
     /**
+     * This plugin as a Singleton.
+     */
+    public static Creepocalypse PLUGIN;
+
+    /**
+     * Configuration as a Singleton.
+     */
+    public static Configuration CONFIG = new Configuration();
+
+    // ------------------------------------------------------------------------
+    /**
      * @see org.bukkit.plugin.java.JavaPlugin#onEnable()
      */
     @Override
     public void onEnable() {
+        PLUGIN = this;
         if (FROM_SPAWNER_META == null) {
             FROM_SPAWNER_META = new FixedMetadataValue(this, null);
         }
 
         saveDefaultConfig();
-        loadConfiguration();
+        CONFIG.reload();
         getServer().getPluginManager().registerEvents(this, this);
     }
 
@@ -65,7 +77,7 @@ public class Creepocalypse extends JavaPlugin implements Listener {
     public boolean onCommand(CommandSender sender, Command command, String name, String[] args) {
         if (command.getName().equalsIgnoreCase("creepocalypse")) {
             if (args.length == 1 && args[0].equalsIgnoreCase("reload")) {
-                loadConfiguration();
+                CONFIG.reload();
                 sender.sendMessage(ChatColor.GOLD + "Creepocalypse configuration reloaded.");
                 return true;
             }
@@ -108,7 +120,7 @@ public class Creepocalypse extends JavaPlugin implements Listener {
         }
 
         // Randomly charge a fraction of creepers.
-        if (creeper != null && Math.random() < _chargedChance) {
+        if (creeper != null && Math.random() < CONFIG.CHARGED_CHANCE) {
             creeper.setPowered(true);
         }
     } // onCreatureSpawn
@@ -141,7 +153,7 @@ public class Creepocalypse extends JavaPlugin implements Listener {
             if (isPlayerAttack) {
                 Entity creeper = event.getEntity();
                 creeper.setMetadata(PLAYER_DAMAGE_TIME,
-                    new FixedMetadataValue(this, new Long(creeper.getWorld().getFullTime())));
+                                    new FixedMetadataValue(this, new Long(creeper.getWorld().getFullTime())));
             }
         }
     }
@@ -162,7 +174,7 @@ public class Creepocalypse extends JavaPlugin implements Listener {
 
         if (event.getEntityType() == EntityType.CREEPER) {
             // Apply scaling factor to blast radius.
-            event.setRadius((float) _blastRadiusScale * event.getRadius());
+            event.setRadius((float) CONFIG.BLAST_RADIUS_SCALE * event.getRadius());
 
             Entity creeper = event.getEntity();
             launchReinforcements(creeper);
@@ -203,10 +215,10 @@ public class Creepocalypse extends JavaPlugin implements Listener {
                     World world = loc.getWorld();
                     if (world.getFullTime() - value.asLong() < PLAYER_DAMAGE_TICKS &&
                         !isSpawnerNear(loc, 15)) {
-                        if (Math.random() < _fireworkDropChance) {
+                        if (Math.random() < CONFIG.FIREWORK_DROP_CHANCE) {
                             // Replace the default drops.
                             event.getDrops().clear();
-                            final int amount = random(_minFireworkDrops, _maxFireworkDrops);
+                            final int amount = random(CONFIG.MIN_FIREWORK_DROPS, CONFIG.MAX_FIREWORK_DROPS);
                             for (int i = 0; i < amount; ++i) {
                                 ItemStack firework = new ItemStack(Material.FIREWORK);
                                 FireworkMeta meta = (FireworkMeta) firework.getItemMeta();
@@ -219,7 +231,7 @@ public class Creepocalypse extends JavaPlugin implements Listener {
 
                         // Powered creepers may drop a skull:4 in addition to
                         // fireworks.
-                        if (creeper.isPowered() && Math.random() < _chargedCreeperSkullDropChance) {
+                        if (creeper.isPowered() && Math.random() < CONFIG.CHARGED_CREEPER_SKULL_CHANCE) {
                             event.getDrops().add(new ItemStack(Material.SKULL_ITEM, 1, (short) 4));
                         }
                     }
@@ -227,25 +239,6 @@ public class Creepocalypse extends JavaPlugin implements Listener {
             }
         }
     } // onCreeperDeath
-
-    // ------------------------------------------------------------------------
-    /**
-     * Load the configuration.
-     */
-    public void loadConfiguration() {
-        reloadConfig();
-        _blastRadiusScale = getConfig().getDouble("difficulty.blastscale", 0.6);
-        _chargedChance = getConfig().getDouble("difficulty.charged", 0.2);
-        _minReinforcements = getConfig().getInt("reinforcements.min", 0);
-        _maxReinforcements = getConfig().getInt("reinforcements.max", 5);
-        _reinforcementRange = getConfig().getDouble("reinforcements.range", 6.0);
-        _minReinforcementSpeed = getConfig().getDouble("reinforcements.velocity.min", 1);
-        _maxReinforcementSpeed = getConfig().getDouble("reinforcements.velocity.max", 3);
-        _fireworkDropChance = getConfig().getDouble("drops.firework.chance", 0.3);
-        _minFireworkDrops = getConfig().getInt("drops.firework.min", 0);
-        _maxFireworkDrops = getConfig().getInt("drops.firework.max", 2);
-        _chargedCreeperSkullDropChance = getConfig().getDouble("drops.skull.chance", 0.03);
-    }
 
     // ------------------------------------------------------------------------
     /**
@@ -258,7 +251,7 @@ public class Creepocalypse extends JavaPlugin implements Listener {
      * @param creeper the exploding creeper.
      */
     protected void launchReinforcements(Entity creeper) {
-        final int numReinforcements = random(_minReinforcements, _maxReinforcements);
+        final int numReinforcements = random(CONFIG.MIN_REINFORCEMENTS, CONFIG.MAX_REINFORCEMENTS);
         for (int i = 0; i < numReinforcements; ++i) {
             // Compute unit velocity vector components, given 45 degree pitch.
             double yaw = 2.0 * Math.PI * Math.random();
@@ -269,7 +262,7 @@ public class Creepocalypse extends JavaPlugin implements Listener {
             // Spawn one reinforcement.
             Location origin = creeper.getLocation();
             World world = origin.getWorld();
-            Location loc = origin.clone().add(_reinforcementRange * x, 0.5, _reinforcementRange * z);
+            Location loc = origin.clone().add(CONFIG.REINFORCEMENT_RANGE * x, 0.5, CONFIG.REINFORCEMENT_RANGE * z);
             Creeper reinforcement = (Creeper) world.spawnEntity(loc, EntityType.CREEPER);
             if (reinforcement != null) {
                 // Add spawner metadata tag if the original creeper came from
@@ -278,12 +271,12 @@ public class Creepocalypse extends JavaPlugin implements Listener {
                     tagSpawnerCreeper(reinforcement);
                 }
 
-                double speed = random(_minReinforcementSpeed, _maxReinforcementSpeed);
+                double speed = random(CONFIG.MIN_REINFORCEMENT_SPEED, CONFIG.MAX_REINFORCEMENT_SPEED);
                 Vector velocity = new Vector(speed * x, speed * y, speed * z);
                 reinforcement.setVelocity(velocity);
 
                 // Randomly charge a fraction of creepers.
-                if (Math.random() < _chargedChance) {
+                if (Math.random() < CONFIG.CHARGED_CHANCE) {
                     reinforcement.setPowered(true);
                 }
             }
@@ -308,7 +301,7 @@ public class Creepocalypse extends JavaPlugin implements Listener {
         }
 
         final FireworkEffect.Type[] TYPES = allowCreeperType ? FireworkEffect.Type.values()
-                                                            : NON_CREEPER_FIREWORK_TYPES;
+                                                             : NON_CREEPER_FIREWORK_TYPES;
         builder.with(TYPES[random(0, TYPES.length - 1)]);
 
         final int primaryColors = random(1, 4);
@@ -430,62 +423,4 @@ public class Creepocalypse extends JavaPlugin implements Listener {
      */
     protected static final double INV_ROOT_2 = 1 / Math.sqrt(2.0);
 
-    /**
-     * Scaling factor multiplied into the blast radius of creeper explosions.
-     * 
-     * By setting this < 1.0, we can mitigate the difficulty of so many
-     * explosions, somewhat.
-     */
-    protected double _blastRadiusScale;
-
-    /**
-     * Chance, [0.0, 1.0], of a creeper being spawned as a charged creeper.
-     */
-    protected double _chargedChance;
-
-    /**
-     * Minimum number of reinforcements spawned on creeper detonation.
-     */
-    protected int _minReinforcements;
-
-    /**
-     * Maximum number of reinforcements spawned on creeper detonation.
-     */
-    protected int _maxReinforcements;
-
-    /**
-     * Range (distance) from exploding creeper at which reinforcements spawn.
-     */
-    protected double _reinforcementRange;
-
-    /**
-     * Minimum reinforcement launch speed.
-     */
-    protected double _minReinforcementSpeed;
-
-    /**
-     * Maximum reinforcement launch speed.
-     */
-    protected double _maxReinforcementSpeed;
-
-    /**
-     * Chance, [0.0, 1.0], of dropping a firework when slain by a player.
-     */
-    protected double _fireworkDropChance;
-
-    /**
-     * Minimum size of dropped firework item stack when creeper slain.
-     */
-    protected int _minFireworkDrops;
-
-    /**
-     * Maximum size of dropped firework item stack when creeper slain.
-     */
-    protected int _maxFireworkDrops;
-
-    /**
-     * Chance, [0.0, 1.0], of a charged creeper dropping a skull when slain by a
-     * player.
-     */
-    protected double _chargedCreeperSkullDropChance;
 } // class Creepocalypse
