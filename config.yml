@@ -1,6 +1,9 @@
+# Affected world.
+world: world
+
 difficulty:
   # Scaling factor applied to the vanilla creeper blast radius.
-  blastscale: 0.65
+  blastscale: 0.7
   
   # Probability, [0.0, 1.0], that creeper is charged creeper.
   charged: 0.02
@@ -21,7 +24,7 @@ reinforcements:
 drops:
   firework:
     # Probability, [0.0, 1.0], of dropping firework when slain by player.
-    chance: 0.6
+    chance: 0.75
 
     # Minimum and maximum number of fireworks dropped when slain by player.
     min: 0

@@ -2,21 +2,18 @@ package nu.nerd.creepocalypse;
 
 import java.util.List;
 
-import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Color;
 import org.bukkit.FireworkEffect;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
-import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Creeper;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Firework;
-import org.bukkit.entity.Monster;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
@@ -56,9 +53,7 @@ public class Creepocalypse extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         PLUGIN = this;
-        if (FROM_SPAWNER_META == null) {
-            FROM_SPAWNER_META = new FixedMetadataValue(this, null);
-        }
+        SPECIAL_META = new FixedMetadataValue(this, null);
 
         saveDefaultConfig();
         CONFIG.reload();
@@ -89,38 +84,28 @@ public class Creepocalypse extends JavaPlugin implements Listener {
 
     // ------------------------------------------------------------------------
     /**
-     * Replace non-creepers with creepers, except near dungeons.
-     * 
-     * Tag creepers spawned in spawners so we can suppress special drops.
+     * Replace naturally spawned monsters in the affected world with creepers.
      */
     @EventHandler(ignoreCancelled = true)
     public void onCreatureSpawn(CreatureSpawnEvent event) {
-        // Only applies to overworld.
-        Entity entity = event.getEntity();
-        if (entity.getWorld() != Bukkit.getWorlds().get(0)) {
+        if (!CONFIG.isAffectedWorld(event) ||
+            event.getSpawnReason() != SpawnReason.NATURAL ||
+            !isEligibleHostileMob(event.getEntityType())) {
             return;
         }
 
-        Creeper creeper = null;
+        Entity originalMob = event.getEntity();
+        Creeper creeper;
         if (event.getEntityType() == EntityType.CREEPER) {
-            creeper = (Creeper) entity;
-            if (event.getSpawnReason() == SpawnReason.SPAWNER || isSpawnerNear(creeper.getLocation(), 15)) {
-                tagSpawnerCreeper(creeper);
-            }
+            creeper = (Creeper) originalMob;
         } else {
-            // Replace naturally spawned hostile creatures with a creeper.
-            // This spawn can probably cause re-entry of this event handler.
-            if (event.getSpawnReason() == SpawnReason.NATURAL && entity instanceof Monster) {
-                Location loc = entity.getLocation();
-                creeper = (Creeper) loc.getWorld().spawnEntity(loc, EntityType.CREEPER);
-
-                // Remove original spawn.
-                entity.remove();
-            }
+            Location loc = originalMob.getLocation();
+            creeper = (Creeper) loc.getWorld().spawnEntity(loc, EntityType.CREEPER);
+            originalMob.remove();
         }
+        creeper.setMetadata(SPECIAL_KEY, SPECIAL_META);
 
-        // Randomly charge a fraction of creepers.
-        if (creeper != null && Math.random() < CONFIG.CHARGED_CHANCE) {
+        if (Math.random() < CONFIG.CHARGED_CHANCE) {
             creeper.setPowered(true);
         }
     } // onCreatureSpawn
@@ -133,8 +118,7 @@ public class Creepocalypse extends JavaPlugin implements Listener {
      */
     @EventHandler(ignoreCancelled = true)
     public void onCreeperDamage(EntityDamageByEntityEvent event) {
-        // Only applies to overworld.
-        if (event.getEntity().getWorld() != Bukkit.getWorlds().get(0)) {
+        if (!CONFIG.isAffectedWorld(event)) {
             return;
         }
 
@@ -152,7 +136,7 @@ public class Creepocalypse extends JavaPlugin implements Listener {
             // Tag creepers hurt by players with the damage time stamp.
             if (isPlayerAttack) {
                 Entity creeper = event.getEntity();
-                creeper.setMetadata(PLAYER_DAMAGE_TIME,
+                creeper.setMetadata(PLAYER_DAMAGE_TIME_KEY,
                                     new FixedMetadataValue(this, new Long(creeper.getWorld().getFullTime())));
             }
         }
@@ -167,13 +151,11 @@ public class Creepocalypse extends JavaPlugin implements Listener {
      */
     @EventHandler(ignoreCancelled = true)
     public void onCreeperDetonate(ExplosionPrimeEvent event) {
-        // Only applies to overworld.
-        if (event.getEntity().getWorld() != Bukkit.getWorlds().get(0)) {
+        if (!CONFIG.isAffectedWorld(event)) {
             return;
         }
 
         if (event.getEntityType() == EntityType.CREEPER) {
-            // Apply scaling factor to blast radius.
             event.setRadius((float) CONFIG.BLAST_RADIUS_SCALE * event.getRadius());
 
             Entity creeper = event.getEntity();
@@ -197,48 +179,80 @@ public class Creepocalypse extends JavaPlugin implements Listener {
      */
     @EventHandler(ignoreCancelled = true)
     public void onCreeperDeath(EntityDeathEvent event) {
-        // Only applies to overworld.
-        if (event.getEntity().getWorld() != Bukkit.getWorlds().get(0)) {
+        if (!CONFIG.isAffectedWorld(event)) {
             return;
         }
 
         Entity entity = event.getEntity();
-        if (entity.getType() == EntityType.CREEPER && !entity.hasMetadata(FROM_SPAWNER)) {
+        if (entity.getType() == EntityType.CREEPER && entity.hasMetadata(SPECIAL_KEY)) {
             Creeper creeper = (Creeper) entity;
 
-            // Require recent player damage on the creeper for firework drops.
-            List<MetadataValue> playerDamageTime = creeper.getMetadata(PLAYER_DAMAGE_TIME);
-            if (playerDamageTime.size() != 0) {
-                MetadataValue value = playerDamageTime.get(0);
-                if (value.value() instanceof Long) {
-                    Location loc = creeper.getLocation();
-                    World world = loc.getWorld();
-                    if (world.getFullTime() - value.asLong() < PLAYER_DAMAGE_TICKS &&
-                        !isSpawnerNear(loc, 15)) {
-                        if (Math.random() < CONFIG.FIREWORK_DROP_CHANCE) {
-                            // Replace the default drops.
-                            event.getDrops().clear();
-                            final int amount = random(CONFIG.MIN_FIREWORK_DROPS, CONFIG.MAX_FIREWORK_DROPS);
-                            for (int i = 0; i < amount; ++i) {
-                                ItemStack firework = new ItemStack(Material.FIREWORK);
-                                FireworkMeta meta = (FireworkMeta) firework.getItemMeta();
-                                meta.setPower(random(0, 3));
-                                meta.addEffect(randomFireworkFffect(false));
-                                firework.setItemMeta(meta);
-                                event.getDrops().add(firework);
-                            }
+            // Require recent player damage on the creeper for special drops.
+            Long damageTime = getPlayerDamageTime(entity);
+            if (damageTime != null) {
+                Location loc = creeper.getLocation();
+                if (loc.getWorld().getFullTime() - damageTime < PLAYER_DAMAGE_TICKS) {
+                    if (Math.random() < CONFIG.FIREWORK_DROP_CHANCE) {
+                        // Replace the default drops.
+                        event.getDrops().clear();
+                        final int amount = random(CONFIG.MIN_FIREWORK_DROPS, CONFIG.MAX_FIREWORK_DROPS);
+                        for (int i = 0; i < amount; ++i) {
+                            ItemStack firework = new ItemStack(Material.FIREWORK);
+                            FireworkMeta meta = (FireworkMeta) firework.getItemMeta();
+                            meta.setPower(random(0, 3));
+                            meta.addEffect(randomFireworkFffect(false));
+                            firework.setItemMeta(meta);
+                            event.getDrops().add(firework);
                         }
+                    }
 
-                        // Powered creepers may drop a skull:4 in addition to
-                        // fireworks.
-                        if (creeper.isPowered() && Math.random() < CONFIG.CHARGED_CREEPER_SKULL_CHANCE) {
-                            event.getDrops().add(new ItemStack(Material.SKULL_ITEM, 1, (short) 4));
-                        }
+                    // Powered creepers may drop a creeper skull in addition to
+                    // fireworks.
+                    if (creeper.isPowered() && Math.random() < CONFIG.CHARGED_CREEPER_SKULL_CHANCE) {
+                        event.getDrops().add(new ItemStack(Material.SKULL_ITEM, 1, (short) 4));
                     }
                 }
             }
         }
     } // onCreeperDeath
+
+    // ------------------------------------------------------------------------
+    /**
+     * Return true if the specified entity type is that of a hostile mob that is
+     * eligible to be replaced with a creeper.
+     *
+     * @param type the entity's type.
+     * @return true if the specified entity type is that of a hostile mob that
+     *         is eligible to be replaced with a creeper
+     */
+    protected boolean isEligibleHostileMob(EntityType type) {
+        return type == EntityType.CREEPER ||
+               type == EntityType.SPIDER ||
+               type == EntityType.SKELETON ||
+               type == EntityType.ZOMBIE ||
+               type == EntityType.ENDERMAN ||
+               type == EntityType.WITCH;
+    }
+
+    // ------------------------------------------------------------------------
+    /**
+     * Return the world time when a player damaged the specified entity, if
+     * stored as a PLAYER_DAMAGE_TIME_KEY metadata value, or null if that didn't
+     * happen.
+     *
+     * @param entity the entity (mob).
+     * @return the damage time stamp as Long, or null.
+     */
+    protected Long getPlayerDamageTime(Entity entity) {
+        List<MetadataValue> playerDamageTime = entity.getMetadata(PLAYER_DAMAGE_TIME_KEY);
+        if (playerDamageTime.size() > 0) {
+            MetadataValue value = playerDamageTime.get(0);
+            if (value.value() instanceof Long) {
+                return (Long) value.value();
+            }
+        }
+        return null;
+    }
 
     // ------------------------------------------------------------------------
     /**
@@ -265,11 +279,7 @@ public class Creepocalypse extends JavaPlugin implements Listener {
             Location loc = origin.clone().add(CONFIG.REINFORCEMENT_RANGE * x, 0.5, CONFIG.REINFORCEMENT_RANGE * z);
             Creeper reinforcement = (Creeper) world.spawnEntity(loc, EntityType.CREEPER);
             if (reinforcement != null) {
-                // Add spawner metadata tag if the original creeper came from
-                // a spawner.
-                if (creeper.hasMetadata(FROM_SPAWNER)) {
-                    tagSpawnerCreeper(reinforcement);
-                }
+                reinforcement.setMetadata(SPECIAL_KEY, SPECIAL_META);
 
                 double speed = random(CONFIG.MIN_REINFORCEMENT_SPEED, CONFIG.MAX_REINFORCEMENT_SPEED);
                 Vector velocity = new Vector(speed * x, speed * y, speed * z);
@@ -319,48 +329,6 @@ public class Creepocalypse extends JavaPlugin implements Listener {
 
     // ------------------------------------------------------------------------
     /**
-     * Tag a creeper originating from a spawner with metadata so that we can
-     * suppress special drops later.
-     * 
-     * Any reinforcements spawned from the detonation of a tagged creeper get
-     * the same tag, so they will also not drop special drops.
-     * 
-     * @param creeper the creeper.
-     */
-    protected void tagSpawnerCreeper(Entity creeper) {
-        creeper.setMetadata(FROM_SPAWNER, FROM_SPAWNER_META);
-    }
-
-    // ------------------------------------------------------------------------
-    /**
-     * Return true if there is a mob spawner in the cube of the specified
-     * "radius" around the Location.
-     * 
-     * @return true if a mob spawner is within the cube.
-     */
-    protected static boolean isSpawnerNear(Location loc, int radius) {
-        if (radius != 0 && loc != null) {
-            World world = loc.getWorld();
-            int x = loc.getBlockX();
-            int y = loc.getBlockY();
-            int z = loc.getBlockZ();
-
-            for (int dx = -radius; dx <= radius; ++dx) {
-                for (int dy = -radius; dy <= radius; ++dy) {
-                    for (int dz = -radius; dz <= radius; ++dz) {
-                        Block block = world.getBlockAt(x + dx, y + dy, z + dz);
-                        if (block.getType() == Material.MOB_SPAWNER) {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
-    // ------------------------------------------------------------------------
-    /**
      * Return a random integer in the range [min,max].
      * 
      * @return a random integer in the range [min,max].
@@ -381,21 +349,20 @@ public class Creepocalypse extends JavaPlugin implements Listener {
 
     // ------------------------------------------------------------------------
     /**
-     * Metadata name used to tag creepers spawned from spawners and
-     * reinforcements of creepers with that metadata.
+     * Metadata key for SPECIAL_META.
      */
-    protected static final String FROM_SPAWNER = "FromSpawner";
+    protected static final String SPECIAL_KEY = "Creepocalypse_Special";
 
     /**
-     * Shared metadata value for all tagged creepers.
+     * Shared metadata value for creepers that drop special drops.
      */
-    protected static FixedMetadataValue FROM_SPAWNER_META;
+    protected static FixedMetadataValue SPECIAL_META;
 
     /**
-     * Metadata name used for metadata stored on creepers to record last damage
+     * Metadata key used for metadata stored on creepers to record last damage
      * time by a player.
      */
-    protected static final String PLAYER_DAMAGE_TIME = "PlayerDamageTime";
+    protected static final String PLAYER_DAMAGE_TIME_KEY = "Creepocalypse_PlayerDamageTime";
 
     /**
      * Array of all firework types except the creeper-head-shaped type.
