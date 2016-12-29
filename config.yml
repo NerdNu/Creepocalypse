@@ -1,9 +1,9 @@
 difficulty:
   # Scaling factor applied to the vanilla creeper blast radius.
-  blastscale: 0.6
+  blastscale: 0.65
   
   # Probability, [0.0, 1.0], that creeper is charged creeper.
-  charged: 0.2
+  charged: 0.02
 
 reinforcements:
   # Minimum and maximum number of reinforcements spawned on detonation.
@@ -21,7 +21,7 @@ reinforcements:
 drops:
   firework:
     # Probability, [0.0, 1.0], of dropping firework when slain by player.
-    chance: 0.3
+    chance: 0.6
 
     # Minimum and maximum number of fireworks dropped when slain by player.
     min: 0
@@ -29,4 +29,4 @@ drops:
     
   skull:
     # Probability, [0.0, 1.0], of a charged creeper dropping a skull when slain by player.
-    chance: 0.03
+    chance: 0.00
