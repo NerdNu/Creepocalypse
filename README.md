@@ -31,7 +31,7 @@ Difficulty
 ----------
 
  * The relative prevalance of charged creepers has a marked effect on difficulty.
- * The blast radius of all creeper explosions is scaled by a factor of **0.7**, which makes the plugin more survivable.  Difficulty has been tuned to a reasonable level for iron armour.
+ * The blast radius of all creeper explosions is scaled by a factor of **0.6**, which makes the plugin more survivable.  Difficulty has been tuned to a reasonable level for iron armour.
  * Allowing creepers to detonate will potentially result in a charged creeper being blasted to a position behind the player, which can be very dangerous.
  * With good quality diamond armour you can be a bit cavalier about even the charged creepers, allowing them to blast you into the air.  That can be fun!
  

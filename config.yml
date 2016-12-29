@@ -3,7 +3,7 @@ world: world
 
 difficulty:
   # Scaling factor applied to the vanilla creeper blast radius.
-  blastscale: 0.7
+  blastscale: 0.6
   
   # Probability, [0.0, 1.0], that creeper is charged creeper.
   charged: 0.02
